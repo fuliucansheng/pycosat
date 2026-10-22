@@ -1,0 +1,42 @@
+name: Windows ARM64 wheels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: arm64
+      - name: Verify native interpreter
+        run: python -I -c "import sysconfig; assert sysconfig.get_platform() == 'win-arm64', sysconfig.get_platform()"
+      - name: Install build frontend
+        run: python -I -m pip install build
+      - name: Build source distribution and wheel in isolated environments
+        run: python -I -m build
+      - name: Install and test the wheel
+        shell: pwsh
+        run: |
+          $wheel = @(Get-ChildItem dist/pycosat-*-win_arm64.whl)
+          if ($wheel.Count -ne 1) { throw "Expected exactly one native ARM64 wheel" }
+          python -I -m pip install $wheel[0].FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I -m unittest test_pycosat
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I -c "import pycosat; assert pycosat.solve([[1]]) == [1]; assert pycosat.solve([[1], [-1]]) == 'UNSAT'"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pycosat-win-arm64-cp${{ matrix.python-version }}
+          path: dist/*
+          if-no-files-found: error
